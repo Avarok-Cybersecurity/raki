@@ -24,6 +24,9 @@ impl Decode for u16 {
             rs2: new_rs2,
             // No 16-bit (RVC) encoding has a 4th register operand.
             rs3: None,
+            // No 16-bit (RVC) encoding carries a static rounding-mode
+            // field (compressed FP is FLD/FSD/FLW/FSW only).
+            rm: None,
             imm: new_imm,
             inst_format: new_fmt,
             is_compressed: true,

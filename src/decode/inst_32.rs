@@ -21,6 +21,15 @@ impl Decode for u32 {
             OpcodeKind::D(opc) => d_extension::bit_32::parse_rs3_d(*self, opc),
             _ => None,
         };
+        // rm (bits 14:12) is ONLY meaningful for the F/D OP-FP + FMA
+        // rounding-mode forms; every other opcode keeps `None`. Same
+        // ADDITIVE discipline as `rs3` above — pre-fork consumers never
+        // read it. Compressed (RVC) FP has no rm field.
+        let new_rm: Option<u8> = match &new_opc {
+            OpcodeKind::F(opc) => f_extension::bit_32::parse_rm_f(*self, opc),
+            OpcodeKind::D(opc) => d_extension::bit_32::parse_rm_d(*self, opc),
+            _ => None,
+        };
         let new_imm: Option<i32> = self.parse_imm(&new_opc, isa)?;
         let new_fmt: InstFormat = new_opc.get_format();
 
@@ -30,6 +39,7 @@ impl Decode for u32 {
             rs1: new_rs1,
             rs2: new_rs2,
             rs3: new_rs3,
+            rm: new_rm,
             imm: new_imm,
             inst_format: new_fmt,
             is_compressed: false,

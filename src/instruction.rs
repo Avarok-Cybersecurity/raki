@@ -45,6 +45,19 @@ pub struct Instruction {
     /// ADDITIVE so consumers built against the pre-fork API keep
     /// compiling unchanged (they simply never read it).
     pub rs3: Option<usize>,
+    /// Static rounding-mode field (instr bits 14:12) for the RV OP-FP
+    /// instructions that carry one (every OP-FP form incl. FCVT, plus
+    /// the FMADD/FMSUB/FNMSUB/FNMADD majors). `0b000`=RNE, `0b001`=RTZ,
+    /// `0b010`=RDN, `0b011`=RUP, `0b100`=RMM, `0b111`=DYN ("use fcsr
+    /// frm"). `None` for every non-rm instruction (loads/stores, the
+    /// integer/compressed/atomic ISA, and the OP-FP forms whose 14:12
+    /// is a funct3 selector rather than a rounding mode — FSGNJ*,
+    /// FMIN/FMAX, FMV.*, FCLASS, FEQ/FLT/FLE). Purely ADDITIVE with the
+    /// same backward-compat discipline as `rs3` (pre-fork consumers
+    /// never read it). The decoder does NOT resolve DYN→fcsr (we do not
+    /// model fcsr); the consumer maps DYN→RNE (the fcsr `frm` reset
+    /// default) explicitly.
+    pub rm: Option<u8>,
     /// Immediate
     pub imm: Option<i32>,
     /// Instruction format

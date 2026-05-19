@@ -125,6 +125,36 @@ pub mod bit_32 {
         }
     }
 
+    /// rm: static rounding-mode (bits 14:12). Present for the D-ext
+    /// arith/sqrt/cvt/FMA forms; `None` for FSGNJ*, FMIN/FMAX, FMV.*,
+    /// FCLASS, FEQ/FLT/FLE (14:12 is a funct3 selector there) and
+    /// FLD/FSD. FCVT.D.S has rm too (the spec lists it; widening
+    /// single->double is always exact so the mode is a no-op, but the
+    /// field is still decoded for completeness/SSOT).
+    pub fn parse_rm_d(inst: u32, opkind: &DOpcode) -> Option<u8> {
+        match opkind {
+            DOpcode::FADD_D
+            | DOpcode::FSUB_D
+            | DOpcode::FMUL_D
+            | DOpcode::FDIV_D
+            | DOpcode::FSQRT_D
+            | DOpcode::FCVT_D_S
+            | DOpcode::FCVT_W_D
+            | DOpcode::FCVT_WU_D
+            | DOpcode::FCVT_L_D
+            | DOpcode::FCVT_LU_D
+            | DOpcode::FCVT_D_W
+            | DOpcode::FCVT_D_WU
+            | DOpcode::FCVT_D_L
+            | DOpcode::FCVT_D_LU
+            | DOpcode::FMADD_D
+            | DOpcode::FMSUB_D
+            | DOpcode::FNMSUB_D
+            | DOpcode::FNMADD_D => Some(u8::try_from(inst.slice(14, 12)).unwrap()),
+            _ => None,
+        }
+    }
+
     /// imm: only FLD (I-type) and FSD (S-type) have one.
     pub fn parse_imm(inst: u32, opkind: &DOpcode) -> Option<i32> {
         match opkind {

@@ -123,6 +123,35 @@ pub mod bit_32 {
         }
     }
 
+    /// rm: static rounding-mode (bits 14:12). Present for every F-ext
+    /// OP-FP form that takes one — the arith/sqrt/cvt/FMA family — and
+    /// `None` for the forms whose 14:12 is a funct3 selector (FSGNJ*,
+    /// FMIN/FMAX, FMV.*, FCLASS, FEQ/FLT/FLE) or that have no rm at all
+    /// (FLW/FSW). FCVT.S.D carries rm (it rounds double->single).
+    pub fn parse_rm_f(inst: u32, opkind: &FOpcode) -> Option<u8> {
+        match opkind {
+            FOpcode::FADD_S
+            | FOpcode::FSUB_S
+            | FOpcode::FMUL_S
+            | FOpcode::FDIV_S
+            | FOpcode::FSQRT_S
+            | FOpcode::FCVT_S_D
+            | FOpcode::FCVT_W_S
+            | FOpcode::FCVT_WU_S
+            | FOpcode::FCVT_L_S
+            | FOpcode::FCVT_LU_S
+            | FOpcode::FCVT_S_W
+            | FOpcode::FCVT_S_WU
+            | FOpcode::FCVT_S_L
+            | FOpcode::FCVT_S_LU
+            | FOpcode::FMADD_S
+            | FOpcode::FMSUB_S
+            | FOpcode::FNMSUB_S
+            | FOpcode::FNMADD_S => Some(u8::try_from(inst.slice(14, 12)).unwrap()),
+            _ => None,
+        }
+    }
+
     /// imm: only FLW (I-type, bits 31:20) and FSW (S-type) have one.
     pub fn parse_imm(inst: u32, opkind: &FOpcode) -> Option<i32> {
         match opkind {
@@ -178,5 +207,34 @@ mod test_f {
         assert_eq!(inst.rs1, Some(1));
         assert_eq!(inst.rs2, Some(2));
         assert_eq!(inst.rs3, Some(5));
+        // rm field (additive, RT-multiarch Rfix Bug A1).
+        // fcvt.w.s a0, fa0, rtz : funct7=1100000 rs2=00000 rs1=10
+        // funct3(rm)=001(RTZ) rd=10 op=1010011
+        let fcvt_rtz: u32 =
+            (0b110_0000u32 << 25) | (0 << 20) | (10 << 15) | (0b001 << 12) | (10 << 7) | 0b101_0011;
+        let inst = fcvt_rtz.decode(Isa::Rv64).unwrap();
+        assert_eq!(inst.opc, OpcodeKind::F(FOpcode::FCVT_W_S));
+        assert_eq!(inst.rm, Some(0b001), "fcvt.w.s rtz must decode rm=RTZ");
+        // fadd.s f3,f1,f2 with rm=000 (RNE, the assembler default).
+        let fadd_rne: u32 =
+            (0u32 << 25) | (2 << 20) | (1 << 15) | (0b000 << 12) | (3 << 7) | 0b101_0011;
+        let inst = fadd_rne.decode(Isa::Rv64).unwrap();
+        assert_eq!(inst.opc, OpcodeKind::F(FOpcode::FADD_S));
+        assert_eq!(inst.rm, Some(0b000), "fadd.s rne default rm bits");
+        // fadd.s with rm=111 (DYN) — decoder reports the raw field;
+        // DYN->RNE resolution is the consumer's job (no fcsr modeled).
+        let fadd_dyn: u32 =
+            (0u32 << 25) | (2 << 20) | (1 << 15) | (0b111 << 12) | (3 << 7) | 0b101_0011;
+        assert_eq!(fadd_dyn.decode(Isa::Rv64).unwrap().rm, Some(0b111));
+        // fmadd.s carries rm too (bits 14:12); here rm=000.
+        assert_eq!(fmadd.decode(Isa::Rv64).unwrap().rm, Some(0b000));
+        // fsgnj.s / fmin.s / fmv.x.w / feq.s : 14:12 is a funct3
+        // selector, NOT a rounding mode -> rm MUST be None.
+        let fsgnj: u32 =
+            (0b001_0000u32 << 25) | (2 << 20) | (1 << 15) | (0b000 << 12) | (3 << 7) | 0b101_0011;
+        assert_eq!(fsgnj.decode(Isa::Rv64).unwrap().rm, None);
+        // flw has no rm field at all.
+        let flw: u32 = (8u32 << 20) | (2 << 15) | (0b010 << 12) | (1 << 7) | 0b000_0111;
+        assert_eq!(flw.decode(Isa::Rv64).unwrap().rm, None);
     }
 }
