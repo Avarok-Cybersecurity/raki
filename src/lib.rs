@@ -32,8 +32,9 @@ mod instruction;
 // re-export
 pub use crate::decode::{Decode, DecodingError};
 pub use crate::instruction::{
-    a_extension::AOpcode, base_i::BaseIOpcode, c_extension::COpcode, m_extension::MOpcode,
-    priv_extension::PrivOpcode, zicboz_extension::ZicbozOpcode, zicfiss_extension::ZicfissOpcode,
+    a_extension::AOpcode, base_i::BaseIOpcode, c_extension::COpcode, d_extension::DOpcode,
+    f_extension::FOpcode, m_extension::MOpcode, priv_extension::PrivOpcode,
+    zicboz_extension::ZicbozOpcode, zicfiss_extension::ZicfissOpcode,
     zicntr_extension::ZicntrOpcode, zicsr_extension::ZicsrOpcode,
     zifencei_extension::ZifenceiOpcode, InstFormat, Instruction, OpcodeKind,
 };
@@ -58,6 +59,10 @@ enum Extensions {
     A,
     /// Compressed Instructions
     C,
+    /// Single-Precision Floating-Point
+    F,
+    /// Double-Precision Floating-Point
+    D,
     /// Instruction-Fetch Fence
     Zifencei,
     /// Cache-Block Zero Instructions
@@ -102,6 +107,7 @@ mod tests {
                 rd: Some(0),
                 rs1: None,
                 rs2: None,
+                rs3: None,
                 imm: Some(-8),
                 inst_format: InstFormat::JFormat,
                 is_compressed: false,
@@ -115,6 +121,7 @@ mod tests {
                 rd: Some(16),
                 rs1: None,
                 rs2: Some(2),
+                rs3: None,
                 imm: None,
                 inst_format: InstFormat::CrFormat,
                 is_compressed: true,
@@ -128,6 +135,7 @@ mod tests {
                 rd: Some(16),
                 rs1: None,
                 rs2: Some(2),
+                rs3: None,
                 imm: None,
                 inst_format: InstFormat::CrFormat,
                 is_compressed: true,
@@ -155,6 +163,7 @@ mod tests {
                 rd: Some(0),
                 rs1: None,
                 rs2: None,
+                rs3: None,
                 imm: Some(-8),
                 inst_format: InstFormat::JFormat,
                 is_compressed: false,

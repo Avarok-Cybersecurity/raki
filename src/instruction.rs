@@ -3,6 +3,8 @@
 pub mod a_extension;
 pub mod base_i;
 pub mod c_extension;
+pub mod d_extension;
+pub mod f_extension;
 pub mod m_extension;
 pub mod priv_extension;
 pub mod zicboz_extension;
@@ -16,6 +18,8 @@ use core::fmt::{self, Display, Formatter};
 use a_extension::AOpcode;
 use base_i::BaseIOpcode;
 use c_extension::COpcode;
+use d_extension::DOpcode;
+use f_extension::FOpcode;
 use m_extension::MOpcode;
 use priv_extension::PrivOpcode;
 use zicboz_extension::ZicbozOpcode;
@@ -35,6 +39,12 @@ pub struct Instruction {
     pub rs1: Option<usize>,
     /// Register Source 2
     pub rs2: Option<usize>,
+    /// Register Source 3 (only the RV F/D fused-multiply-add family
+    /// FMADD/FMSUB/FNMSUB/FNMADD encodes a 4th register in bits 31:27).
+    /// `None` for every non-FMA instruction — this field is purely
+    /// ADDITIVE so consumers built against the pre-fork API keep
+    /// compiling unchanged (they simply never read it).
+    pub rs3: Option<usize>,
     /// Immediate
     pub imm: Option<i32>,
     /// Instruction format
@@ -211,6 +221,46 @@ impl Display for Instruction {
             InstFormat::OnlyRs2 => {
                 write!(f, "{} {}", self.opc, reg2str(self.rs2.unwrap()),)
             }
+            InstFormat::FpLoadFormat => write!(
+                f,
+                "{} f{}, {}({})",
+                self.opc,
+                self.rd.unwrap(),
+                self.imm.unwrap(),
+                reg2str(self.rs1.unwrap()),
+            ),
+            InstFormat::FpStoreFormat => write!(
+                f,
+                "{} f{}, {}({})",
+                self.opc,
+                self.rs2.unwrap(),
+                self.imm.unwrap(),
+                reg2str(self.rs1.unwrap()),
+            ),
+            InstFormat::FpR2Format => write!(
+                f,
+                "{} {}, {}",
+                self.opc,
+                self.rd.unwrap(),
+                self.rs1.unwrap(),
+            ),
+            InstFormat::FpR3Format => write!(
+                f,
+                "{} {}, {}, {}",
+                self.opc,
+                self.rd.unwrap(),
+                self.rs1.unwrap(),
+                self.rs2.unwrap(),
+            ),
+            InstFormat::FpR4Format => write!(
+                f,
+                "{} f{}, f{}, f{}, f{}",
+                self.opc,
+                self.rd.unwrap(),
+                self.rs1.unwrap(),
+                self.rs2.unwrap(),
+                self.rs3.unwrap(),
+            ),
             InstFormat::NoOperand => match self.opc {
                 OpcodeKind::BaseI(BaseIOpcode::ECALL | BaseIOpcode::EBREAK)
                 | OpcodeKind::Zifencei(ZifenceiOpcode::FENCE)
@@ -426,6 +476,17 @@ pub enum InstFormat {
     /// sspopchk t0
     /// ```
     OnlyRs2,
+
+    /// RV F/D load: `fld frd, imm(rs1)`. rd is an f-reg, rs1 an x-reg.
+    FpLoadFormat,
+    /// RV F/D store: `fsd frs2, imm(rs1)`. rs2 is an f-reg, rs1 x-reg.
+    FpStoreFormat,
+    /// RV F/D 2-register OP-FP: `fsqrt.d frd, frs1`.
+    FpR2Format,
+    /// RV F/D 3-register OP-FP: `fadd.d frd, frs1, frs2`.
+    FpR3Format,
+    /// RV F/D 4-register fused multiply-add: `fmadd.d frd,f1,f2,f3`.
+    FpR4Format,
 }
 
 /// Trait for `OpcodeKind`
@@ -446,6 +507,17 @@ pub enum OpcodeKind {
     A(AOpcode),
     /// Compressed Instructions
     C(COpcode),
+    /// Single-Precision Floating-Point (RV F extension).
+    /// The `rd`/`rs1`/`rs2`/`rs3` register operands are f-register
+    /// numbers (f0..f31) EXCEPT for the int<->fp transfer/convert/
+    /// compare/class forms documented on `FOpcode`, where the integer
+    /// side names an x-register. The `OpcodeKind::F` discriminant is the
+    /// contract that tells the consumer which file each operand belongs
+    /// to (see `f_extension::FOpcode`).
+    F(FOpcode),
+    /// Double-Precision Floating-Point (RV D extension). Same f-register
+    /// operand contract as `F` (see `d_extension::DOpcode`).
+    D(DOpcode),
     /// Instruction-Fetch Fence,
     Zifencei(ZifenceiOpcode),
     /// Cache-Block Zero Instructions
@@ -467,6 +539,8 @@ impl Display for OpcodeKind {
             Self::M(opc) => write!(f, "{opc}"),
             Self::A(opc) => write!(f, "{opc}"),
             Self::C(opc) => write!(f, "{opc}"),
+            Self::F(opc) => write!(f, "{opc}"),
+            Self::D(opc) => write!(f, "{opc}"),
             Self::Zifencei(opc) => write!(f, "{opc}"),
             Self::Zicboz(opc) => write!(f, "{opc}"),
             Self::Zicsr(opc) => write!(f, "{opc}"),
@@ -485,6 +559,8 @@ impl OpcodeKind {
             Self::M(opc) => opc.get_format(),
             Self::A(opc) => opc.get_format(),
             Self::C(opc) => opc.get_format(),
+            Self::F(opc) => opc.get_format(),
+            Self::D(opc) => opc.get_format(),
             Self::Zifencei(opc) => opc.get_format(),
             Self::Zicboz(opc) => opc.get_format(),
             Self::Zicsr(opc) => opc.get_format(),

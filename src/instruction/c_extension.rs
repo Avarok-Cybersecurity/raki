@@ -43,6 +43,15 @@ pub enum COpcode {
     ADDW,
     LDSP,
     SDSP,
+
+    //-- C extension of D (RV64 reuses these encodings for f64; the
+    //   RV32-only C.FLW/C.FSW share the same primary funct3 but are
+    //   NOT decoded here — RV64GC has no C.FLW/C.FSW). The rd'/rs2'
+    //   operand is an f-register, the base rs1'/sp an x-register. --
+    FLD,
+    FSD,
+    FLDSP,
+    FSDSP,
 }
 
 impl Display for COpcode {
@@ -82,6 +91,10 @@ impl Display for COpcode {
             COpcode::ADDW => write!(f, "C.addw"),
             COpcode::LDSP => write!(f, "C.ldsp"),
             COpcode::SDSP => write!(f, "C.sdsp"),
+            COpcode::FLD => write!(f, "C.fld"),
+            COpcode::FSD => write!(f, "C.fsd"),
+            COpcode::FLDSP => write!(f, "C.fldsp"),
+            COpcode::FSDSP => write!(f, "C.fsdsp"),
         }
     }
 }
@@ -116,6 +129,12 @@ impl Opcode for COpcode {
             COpcode::SDSP | COpcode::SWSP => InstFormat::CssFormat,
             COpcode::JR | COpcode::JALR | COpcode::MV | COpcode::ADD => InstFormat::CrFormat,
             COpcode::EBREAK => InstFormat::NoOperand,
+
+            // RV64 C.FLD/C.FLDSP: rd=f-reg, base=x-reg, imm. The shared
+            // FP load/store Display arms render the f-register operand
+            // correctly (the integer Cl/Cs arms would mis-name it).
+            COpcode::FLD | COpcode::FLDSP => InstFormat::FpLoadFormat,
+            COpcode::FSD | COpcode::FSDSP => InstFormat::FpStoreFormat,
         }
     }
 }

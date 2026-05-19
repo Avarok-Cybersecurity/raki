@@ -22,6 +22,8 @@ impl Decode for u16 {
             rd: new_rd,
             rs1: new_rs1,
             rs2: new_rs2,
+            // No 16-bit (RVC) encoding has a 4th register operand.
+            rs3: None,
             imm: new_imm,
             inst_format: new_fmt,
             is_compressed: true,

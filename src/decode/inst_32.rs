@@ -1,6 +1,6 @@
 use super::{
-    a_extension, base_i, m_extension, priv_extension, zicboz_extension, zicfiss_extension,
-    zicntr_extension, zicsr_extension, zifencei_extension,
+    a_extension, base_i, d_extension, f_extension, m_extension, priv_extension, zicboz_extension,
+    zicfiss_extension, zicntr_extension, zicsr_extension, zifencei_extension,
 };
 use super::{Decode, DecodeUtil, DecodingError};
 use crate::instruction::{InstFormat, Instruction, OpcodeKind};
@@ -13,6 +13,14 @@ impl Decode for u32 {
         let new_rd: Option<usize> = self.parse_rd(&new_opc)?;
         let new_rs1: Option<usize> = self.parse_rs1(&new_opc)?;
         let new_rs2: Option<usize> = self.parse_rs2(&new_opc)?;
+        // rs3 (bits 31:27) is ONLY meaningful for the F/D fused
+        // multiply-add family; every other opcode keeps `None`. This is
+        // ADDITIVE — pre-fork consumers simply ignore the new field.
+        let new_rs3: Option<usize> = match &new_opc {
+            OpcodeKind::F(opc) => f_extension::bit_32::parse_rs3_f(*self, opc),
+            OpcodeKind::D(opc) => d_extension::bit_32::parse_rs3_d(*self, opc),
+            _ => None,
+        };
         let new_imm: Option<i32> = self.parse_imm(&new_opc, isa)?;
         let new_fmt: InstFormat = new_opc.get_format();
 
@@ -21,6 +29,7 @@ impl Decode for u32 {
             rd: new_rd,
             rs1: new_rs1,
             rs2: new_rs2,
+            rs3: new_rs3,
             imm: new_imm,
             inst_format: new_fmt,
             is_compressed: false,
@@ -36,6 +45,8 @@ impl Decode for u32 {
             }
             Ok(Extensions::M) => Ok(OpcodeKind::M(m_extension::bit_32::parse_opcode(self, isa)?)),
             Ok(Extensions::A) => Ok(OpcodeKind::A(a_extension::bit_32::parse_opcode(self, isa)?)),
+            Ok(Extensions::F) => Ok(OpcodeKind::F(f_extension::bit_32::parse_opcode(self, isa)?)),
+            Ok(Extensions::D) => Ok(OpcodeKind::D(d_extension::bit_32::parse_opcode(self, isa)?)),
             Ok(Extensions::Zifencei) => Ok(OpcodeKind::Zifencei(
                 zifencei_extension::bit_32::parse_opcode(self)?,
             )),
@@ -64,6 +75,8 @@ impl Decode for u32 {
             OpcodeKind::BaseI(opc) => Ok(base_i::bit_32::parse_rd(self, opc)),
             OpcodeKind::M(opc) => Ok(m_extension::bit_32::parse_rd(self, opc)),
             OpcodeKind::A(opc) => Ok(a_extension::bit_32::parse_rd(self, opc)),
+            OpcodeKind::F(opc) => Ok(f_extension::bit_32::parse_rd(self, opc)),
+            OpcodeKind::D(opc) => Ok(d_extension::bit_32::parse_rd(self, opc)),
             OpcodeKind::Zifencei(opc) => Ok(zifencei_extension::bit_32::parse_rd(self, opc)),
             OpcodeKind::Zicsr(opc) => Ok(zicsr_extension::bit_32::parse_rd(self, opc)),
             OpcodeKind::Zicfiss(opc) => Ok(zicfiss_extension::bit_32::parse_rd(self, opc)),
@@ -79,6 +92,8 @@ impl Decode for u32 {
             OpcodeKind::BaseI(opc) => Ok(base_i::bit_32::parse_rs1(self, opc)),
             OpcodeKind::M(opc) => Ok(m_extension::bit_32::parse_rs1(self, opc)),
             OpcodeKind::A(opc) => Ok(a_extension::bit_32::parse_rs1(self, opc)),
+            OpcodeKind::F(opc) => Ok(f_extension::bit_32::parse_rs1(self, opc)),
+            OpcodeKind::D(opc) => Ok(d_extension::bit_32::parse_rs1(self, opc)),
             OpcodeKind::Zifencei(opc) => Ok(zifencei_extension::bit_32::parse_rs1(self, opc)),
             OpcodeKind::Zicsr(opc) => Ok(zicsr_extension::bit_32::parse_rs1(self, opc)),
             OpcodeKind::Zicfiss(opc) => Ok(zicfiss_extension::bit_32::parse_rs1(self, opc)),
@@ -94,6 +109,8 @@ impl Decode for u32 {
             OpcodeKind::BaseI(opc) => Ok(base_i::bit_32::parse_rs2(self, opc)),
             OpcodeKind::M(opc) => Ok(m_extension::bit_32::parse_rs2(self, opc)),
             OpcodeKind::A(opc) => Ok(a_extension::bit_32::parse_rs2(self, opc)),
+            OpcodeKind::F(opc) => Ok(f_extension::bit_32::parse_rs2(self, opc)),
+            OpcodeKind::D(opc) => Ok(d_extension::bit_32::parse_rs2(self, opc)),
             OpcodeKind::Zifencei(opc) => Ok(zifencei_extension::bit_32::parse_rs2(self, opc)),
             OpcodeKind::Zicsr(opc) => Ok(zicsr_extension::bit_32::parse_rs2(self, opc)),
             OpcodeKind::Zicfiss(opc) => Ok(zicfiss_extension::bit_32::parse_rs2(self, opc)),
@@ -109,6 +126,8 @@ impl Decode for u32 {
             OpcodeKind::BaseI(opc) => Ok(base_i::bit_32::parse_imm(self, opc, isa)),
             OpcodeKind::M(opc) => Ok(m_extension::bit_32::parse_imm(self, opc)),
             OpcodeKind::A(opc) => Ok(a_extension::bit_32::parse_imm(self, opc)),
+            OpcodeKind::F(opc) => Ok(f_extension::bit_32::parse_imm(self, opc)),
+            OpcodeKind::D(opc) => Ok(d_extension::bit_32::parse_imm(self, opc)),
             OpcodeKind::Zifencei(opc) => Ok(zifencei_extension::bit_32::parse_imm(self, opc)),
             OpcodeKind::Zicsr(opc) => Ok(zicsr_extension::bit_32::parse_imm(self, opc)),
             OpcodeKind::Zicfiss(opc) => Ok(zicfiss_extension::bit_32::parse_imm(self, opc)),
@@ -132,8 +151,31 @@ impl DecodeUtil for u32 {
         let funct5: u8 = u8::try_from(self.slice(31, 27)).unwrap();
         let funct7: u8 = u8::try_from(self.slice(31, 25)).unwrap();
         let csr: u16 = u16::try_from(self.slice(31, 20)).unwrap();
+        // RV F/D `fmt` field (bits 26:25): 00 = S (single, F ext),
+        // 01 = D (double, D ext). 10/11 (H/Q) are unsupported.
+        let fmt: u8 = u8::try_from(self.slice(26, 25)).unwrap();
+        let fp_ext = |fmt: u8| match fmt {
+            0b00 => Ok(Extensions::F),
+            0b01 => Ok(Extensions::D),
+            _ => Err(DecodingError::UnknownExtension),
+        };
 
         match opmap {
+            // LOAD-FP: funct3 selects width (010=FLW/S, 011=FLD/D).
+            0b000_0111 => match funct3 {
+                0b010 => Ok(Extensions::F),
+                0b011 => Ok(Extensions::D),
+                _ => Err(DecodingError::UnknownExtension),
+            },
+            // STORE-FP: funct3 selects width (010=FSW/S, 011=FSD/D).
+            0b010_0111 => match funct3 {
+                0b010 => Ok(Extensions::F),
+                0b011 => Ok(Extensions::D),
+                _ => Err(DecodingError::UnknownExtension),
+            },
+            // OP-FP and the four fused multiply-add majors: `fmt`
+            // (bits 26:25) selects single (F) vs double (D).
+            0b101_0011 | 0b100_0011 | 0b100_0111 | 0b100_1011 | 0b100_1111 => fp_ext(fmt),
             0b000_1111 => match funct3 {
                 0b000 => Ok(Extensions::Zifencei),
                 0b010 => Ok(Extensions::Zicboz),

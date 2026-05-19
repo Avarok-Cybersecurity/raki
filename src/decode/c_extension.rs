@@ -6,8 +6,13 @@ pub mod bit_16 {
     fn quadrant0(_inst: u16, opmap: u8, isa: Isa) -> Result<COpcode, DecodingError> {
         match opmap {
             0b000 => Ok(COpcode::ADDI4SPN),
+            // RV64: funct3 001/101 in quadrant 0 are C.FLD/C.FSD
+            // (double). RV64GC has NO C.FLW/C.FSW (those are RV32-only
+            // and reuse 011/111 there; RV64 uses 011/111 for C.LD/C.SD).
+            0b001 => only_rv64(COpcode::FLD, isa),
             0b010 => Ok(COpcode::LW),
             0b011 => only_rv64(COpcode::LD, isa),
+            0b101 => only_rv64(COpcode::FSD, isa),
             0b110 => Ok(COpcode::SW),
             0b111 => only_rv64(COpcode::SD, isa),
             _ => Err(DecodingError::InvalidOpcode),
@@ -69,8 +74,11 @@ pub mod bit_16 {
 
         match opmap {
             0b000 => Ok(COpcode::SLLI),
+            // RV64: funct3 001/101 in quadrant 2 are C.FLDSP/C.FSDSP.
+            0b001 => only_rv64(COpcode::FLDSP, isa),
             0b010 => Ok(COpcode::LWSP),
             0b011 => only_rv64(COpcode::LDSP, isa),
+            0b101 => only_rv64(COpcode::FSDSP, isa),
             0b100 => match hi_flag {
                 0b0 => match lo_flag {
                     0b0 => Ok(COpcode::JR),
@@ -115,8 +123,10 @@ pub mod bit_16 {
         let q2_rd: usize = inst.slice(11, 7) as usize;
 
         match opkind {
-            // Quadrant 0
-            COpcode::ADDI4SPN | COpcode::LW | COpcode::LD => Some(q0_rd),
+            // Quadrant 0 (C.FLD rd' is an f-reg, same bit position)
+            COpcode::ADDI4SPN | COpcode::LW | COpcode::LD | COpcode::FLD => Some(q0_rd),
+            // Quadrant 2 (C.FLDSP rd is an f-reg, wide field)
+            COpcode::FLDSP => Some(q2_rd),
             // Quadrant 1
             COpcode::SRLI
             | COpcode::SRAI
@@ -146,8 +156,17 @@ pub mod bit_16 {
         let q2_rs1: usize = inst.slice(11, 7) as usize;
 
         match opkind {
-            // Quadrant 0
-            COpcode::LW | COpcode::LD | COpcode::SW | COpcode::SD => Some(q0_rs1),
+            // Quadrant 0 (C.FLD/C.FSD base rs1' is an x-reg)
+            COpcode::LW
+            | COpcode::LD
+            | COpcode::SW
+            | COpcode::SD
+            | COpcode::FLD
+            | COpcode::FSD => Some(q0_rs1),
+            // C.FLDSP/C.FSDSP base is the implicit sp (x2) — set it
+            // explicitly so the FP Display arm and any rs1-reading
+            // consumer see the real base register.
+            COpcode::FLDSP | COpcode::FSDSP => Some(2),
             // Quadrant 1
             COpcode::ADDI | COpcode::ADDIW | COpcode::ADDI16SP => Some(q1_addi_rs1),
             COpcode::SRLI
@@ -174,8 +193,10 @@ pub mod bit_16 {
         let q2_rs2: usize = inst.slice(6, 2) as usize;
 
         match opkind {
-            // Quadrant 0
-            COpcode::SW | COpcode::SD => Some(q0_rs2),
+            // Quadrant 0 (C.FSD value rs2' is an f-reg)
+            COpcode::SW | COpcode::SD | COpcode::FSD => Some(q0_rs2),
+            // Quadrant 2 (C.FSDSP value rs2 is an f-reg, wide field)
+            COpcode::FSDSP => Some(q2_rs2),
             // Quadrant 1
             COpcode::SUB
             | COpcode::XOR
@@ -243,7 +264,12 @@ pub mod bit_16 {
             // Quadrant0
             COpcode::ADDI4SPN => Some(q0_nzuimm() as i32),
             COpcode::LW | COpcode::SW => Some(q0_uimm() as i32),
-            COpcode::LD | COpcode::SD => Some(q0_uimm_64() as i32),
+            COpcode::LD | COpcode::SD | COpcode::FLD | COpcode::FSD => {
+                Some(q0_uimm_64() as i32)
+            }
+            // C.FLDSP/C.FSDSP scale identically to C.LDSP/C.SDSP (f64).
+            COpcode::FLDSP => Some(q2_ldsp_imm()),
+            COpcode::FSDSP => Some(q2_sdsp_imm()),
             // Quadrant1
             COpcode::ADDIW | COpcode::LI | COpcode::ANDI => Some(q1_imm()),
             COpcode::NOP | COpcode::ADDI => Some(q1_nzimm()),
