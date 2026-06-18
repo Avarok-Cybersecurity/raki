@@ -79,17 +79,38 @@ pub mod bit_32 {
                     0b010_0000 => Ok(BaseIOpcode::SUB),
                     _ => Err(DecodingError::InvalidFunct7),
                 },
-                0b001 => Ok(BaseIOpcode::SLL),
-                0b010 => Ok(BaseIOpcode::SLT),
-                0b011 => Ok(BaseIOpcode::SLTU),
-                0b100 => Ok(BaseIOpcode::XOR),
+                // funct7 MUST be 0 here: Zb*/Zicond reuse these funct3
+                // values with a non-zero funct7. Without this guard they
+                // SILENTLY decode as the wrong base-I op (soundness bug).
+                0b001 => match funct7 {
+                    0b000_0000 => Ok(BaseIOpcode::SLL),
+                    _ => Err(DecodingError::InvalidFunct7),
+                },
+                0b010 => match funct7 {
+                    0b000_0000 => Ok(BaseIOpcode::SLT),
+                    _ => Err(DecodingError::InvalidFunct7),
+                },
+                0b011 => match funct7 {
+                    0b000_0000 => Ok(BaseIOpcode::SLTU),
+                    _ => Err(DecodingError::InvalidFunct7),
+                },
+                0b100 => match funct7 {
+                    0b000_0000 => Ok(BaseIOpcode::XOR),
+                    _ => Err(DecodingError::InvalidFunct7),
+                },
                 0b101 => match funct7 {
                     0b000_0000 => Ok(BaseIOpcode::SRL),
                     0b010_0000 => Ok(BaseIOpcode::SRA),
                     _ => Err(DecodingError::InvalidFunct7),
                 },
-                0b110 => Ok(BaseIOpcode::OR),
-                0b111 => Ok(BaseIOpcode::AND),
+                0b110 => match funct7 {
+                    0b000_0000 => Ok(BaseIOpcode::OR),
+                    _ => Err(DecodingError::InvalidFunct7),
+                },
+                0b111 => match funct7 {
+                    0b000_0000 => Ok(BaseIOpcode::AND),
+                    _ => Err(DecodingError::InvalidFunct7),
+                },
                 _ => Err(DecodingError::InvalidFunct3),
             },
             0b111_0011 => match funct3 {
@@ -105,7 +126,11 @@ pub mod bit_32 {
             },
             0b001_1011 => match funct3 {
                 0b000 => only_rv64(BaseIOpcode::ADDIW, isa),
-                0b001 => only_rv64(BaseIOpcode::SLLIW, isa),
+                // funct7==0 guard: `slli.uw` (Zba) reuses this funct3.
+                0b001 => match funct7 {
+                    0b000_0000 => only_rv64(BaseIOpcode::SLLIW, isa),
+                    _ => Err(DecodingError::InvalidFunct7),
+                },
                 0b101 => match funct7 {
                     0b000_0000 => only_rv64(BaseIOpcode::SRLIW, isa),
                     0b010_0000 => only_rv64(BaseIOpcode::SRAIW, isa),
@@ -119,7 +144,11 @@ pub mod bit_32 {
                     0b010_0000 => only_rv64(BaseIOpcode::SUBW, isa),
                     _ => Err(DecodingError::InvalidFunct7),
                 },
-                0b001 => only_rv64(BaseIOpcode::SLLW, isa),
+                // funct7==0 guard: `slli.uw`/`rolw`-class reuse funct3=001.
+                0b001 => match funct7 {
+                    0b000_0000 => only_rv64(BaseIOpcode::SLLW, isa),
+                    _ => Err(DecodingError::InvalidFunct7),
+                },
                 0b101 => match funct7 {
                     0b000_0000 => only_rv64(BaseIOpcode::SRLW, isa),
                     0b010_0000 => only_rv64(BaseIOpcode::SRAW, isa),
@@ -483,5 +512,90 @@ mod test_basei {
             Some(10),
             None,
         );
+    }
+}
+
+#[cfg(test)]
+mod test_soundness {
+    //! Regression: Zb*/Zicond instructions reuse base-I funct3 values with
+    //! a non-zero funct7. The funct7==0 guards in `parse_opcode` mean they
+    //! can NEVER silently decode as the wrong base-I op. The modelled
+    //! register-register B-extension ops now decode to `OpcodeKind::B`
+    //! (see `decode/b_extension.rs`); the still-unmodelled forms (e.g. the
+    //! immediate `slli.uw`) keep failing LOUD. Either way: never a silent
+    //! mis-decode.
+    use crate::decode::Decode;
+    use crate::instruction::b_extension::BOpcode;
+    use crate::{Isa, OpcodeKind};
+
+    #[test]
+    #[allow(overflowing_literals)]
+    fn zb_ops_decode_to_b_extension_not_silent_misdecode() {
+        // (encoding, expected BOpcode). Before the fork's strict guard +
+        // B-extension these SILENTLY decoded as the wrong base-I op
+        // (andn→AND, min→XOR, rol→SLL, …). Now they decode correctly.
+        let cases: &[(u32, BOpcode)] = &[
+            (0x40f676b3, BOpcode::ANDN),
+            (0x40f6e6b3, BOpcode::ORN),
+            (0x40f6c6b3, BOpcode::XNOR),
+            (0x0af646b3, BOpcode::MIN),
+            (0x0af666b3, BOpcode::MAX),
+            (0x0af676b3, BOpcode::MAXU),
+            (0x60f696b3, BOpcode::ROL),
+            (0x20f626b3, BOpcode::SH1ADD),
+            (0x20f646b3, BOpcode::SH2ADD),
+            (0x20f666b3, BOpcode::SH3ADD),
+            (0x48f696b3, BOpcode::BCLR),
+            (0x68f696b3, BOpcode::BINV),
+            (0x28f696b3, BOpcode::BSET),
+            (0x0ef676b3, BOpcode::CZERO_NEZ),
+        ];
+        for &(enc, want) in cases {
+            let inst = Decode::decode(&enc, Isa::Rv64)
+                .unwrap_or_else(|e| panic!("0x{enc:08x} must decode: {e:?}"));
+            assert_eq!(
+                inst.opc,
+                OpcodeKind::B(want),
+                "0x{enc:08x} decoded to the wrong opcode"
+            );
+        }
+    }
+
+    #[test]
+    #[allow(overflowing_literals)]
+    fn unmodelled_bitmanip_still_fails_loud() {
+        // Immediate / unary B-extension forms NOT yet modelled must still
+        // fail loud (never silently mis-decode as a base-I op).
+        for &(enc, name) in &[
+            (0x0807169bu32, "slli.uw"),
+            (0x60511093, "rori x1,x2,5"),
+            (0x60201013, "clz x0,x0"),
+        ] {
+            assert!(
+                Decode::decode(&enc, Isa::Rv64).is_err(),
+                "{name} (0x{enc:08x}) is unmodelled and must fail loud"
+            );
+        }
+    }
+
+    #[test]
+    #[allow(overflowing_literals)]
+    fn valid_rv64gc_op_still_decodes() {
+        // The strict funct7 guard must NOT regress legitimate base-I OP
+        // instructions (funct7==0): xor/or/and/sll/slt/sltu, add x18,x18,x10.
+        for enc in [
+            0x00a9_4933u32, // xor  x18,x18,x10
+            0x00a9_6933,    // or
+            0x00a9_7933,    // and
+            0x00a9_1933,    // sll
+            0x00a9_2933,    // slt
+            0x00a9_3933,    // sltu
+            0x00a9_0933,    // add
+        ] {
+            assert!(
+                Decode::decode(&enc, Isa::Rv64).is_ok(),
+                "valid base-I OP 0x{enc:08x} must still decode"
+            );
+        }
     }
 }

@@ -1,6 +1,6 @@
 use super::{
-    a_extension, base_i, d_extension, f_extension, m_extension, priv_extension, zicboz_extension,
-    zicfiss_extension, zicntr_extension, zicsr_extension, zifencei_extension,
+    a_extension, b_extension, base_i, d_extension, f_extension, m_extension, priv_extension,
+    zicboz_extension, zicfiss_extension, zicntr_extension, zicsr_extension, zifencei_extension,
 };
 use super::{Decode, DecodeUtil, DecodingError};
 use crate::instruction::{InstFormat, Instruction, OpcodeKind};
@@ -54,6 +54,7 @@ impl Decode for u32 {
                 Ok(OpcodeKind::BaseI(base_i::bit_32::parse_opcode(self, isa)?))
             }
             Ok(Extensions::M) => Ok(OpcodeKind::M(m_extension::bit_32::parse_opcode(self, isa)?)),
+            Ok(Extensions::B) => Ok(OpcodeKind::B(b_extension::bit_32::parse_opcode(self, isa)?)),
             Ok(Extensions::A) => Ok(OpcodeKind::A(a_extension::bit_32::parse_opcode(self, isa)?)),
             Ok(Extensions::F) => Ok(OpcodeKind::F(f_extension::bit_32::parse_opcode(self, isa)?)),
             Ok(Extensions::D) => Ok(OpcodeKind::D(d_extension::bit_32::parse_opcode(self, isa)?)),
@@ -84,6 +85,7 @@ impl Decode for u32 {
         match opkind {
             OpcodeKind::BaseI(opc) => Ok(base_i::bit_32::parse_rd(self, opc)),
             OpcodeKind::M(opc) => Ok(m_extension::bit_32::parse_rd(self, opc)),
+            OpcodeKind::B(opc) => Ok(b_extension::bit_32::parse_rd(self, opc)),
             OpcodeKind::A(opc) => Ok(a_extension::bit_32::parse_rd(self, opc)),
             OpcodeKind::F(opc) => Ok(f_extension::bit_32::parse_rd(self, opc)),
             OpcodeKind::D(opc) => Ok(d_extension::bit_32::parse_rd(self, opc)),
@@ -101,6 +103,7 @@ impl Decode for u32 {
         match opkind {
             OpcodeKind::BaseI(opc) => Ok(base_i::bit_32::parse_rs1(self, opc)),
             OpcodeKind::M(opc) => Ok(m_extension::bit_32::parse_rs1(self, opc)),
+            OpcodeKind::B(opc) => Ok(b_extension::bit_32::parse_rs1(self, opc)),
             OpcodeKind::A(opc) => Ok(a_extension::bit_32::parse_rs1(self, opc)),
             OpcodeKind::F(opc) => Ok(f_extension::bit_32::parse_rs1(self, opc)),
             OpcodeKind::D(opc) => Ok(d_extension::bit_32::parse_rs1(self, opc)),
@@ -118,6 +121,7 @@ impl Decode for u32 {
         match opkind {
             OpcodeKind::BaseI(opc) => Ok(base_i::bit_32::parse_rs2(self, opc)),
             OpcodeKind::M(opc) => Ok(m_extension::bit_32::parse_rs2(self, opc)),
+            OpcodeKind::B(opc) => Ok(b_extension::bit_32::parse_rs2(self, opc)),
             OpcodeKind::A(opc) => Ok(a_extension::bit_32::parse_rs2(self, opc)),
             OpcodeKind::F(opc) => Ok(f_extension::bit_32::parse_rs2(self, opc)),
             OpcodeKind::D(opc) => Ok(d_extension::bit_32::parse_rs2(self, opc)),
@@ -135,6 +139,7 @@ impl Decode for u32 {
         match opkind {
             OpcodeKind::BaseI(opc) => Ok(base_i::bit_32::parse_imm(self, opc, isa)),
             OpcodeKind::M(opc) => Ok(m_extension::bit_32::parse_imm(self, opc)),
+            OpcodeKind::B(opc) => Ok(b_extension::bit_32::parse_imm(self, opc, isa)),
             OpcodeKind::A(opc) => Ok(a_extension::bit_32::parse_imm(self, opc)),
             OpcodeKind::F(opc) => Ok(f_extension::bit_32::parse_imm(self, opc)),
             OpcodeKind::D(opc) => Ok(d_extension::bit_32::parse_imm(self, opc)),
@@ -197,15 +202,28 @@ impl DecodeUtil for u32 {
                 0b01001 => Ok(Extensions::Zicfiss),
                 _ => Err(DecodingError::UnknownExtension),
             },
-            0b011_0011 => match funct7 {
-                0b000_0001 => Ok(Extensions::M),
-                _ => Ok(Extensions::BaseI),
-            },
-            0b011_1011 => match funct7 {
-                0b000_0000 | 0b010_0000 => Ok(Extensions::BaseI),
-                0b000_0001 => Ok(Extensions::M),
-                _ => Err(DecodingError::UnknownExtension),
-            },
+            0b011_0011 => {
+                if funct7 == 0b000_0001 {
+                    Ok(Extensions::M)
+                } else if b_extension::bit_32::is_b_ext(0b011_0011, funct3, funct7) {
+                    Ok(Extensions::B)
+                } else {
+                    // Base-I (the decoder is now strict: a non-zero funct7
+                    // that is NOT a recognised B-ext op fails loud there).
+                    Ok(Extensions::BaseI)
+                }
+            }
+            0b011_1011 => {
+                if funct7 == 0b000_0001 {
+                    Ok(Extensions::M)
+                } else if b_extension::bit_32::is_b_ext(0b011_1011, funct3, funct7) {
+                    Ok(Extensions::B)
+                } else if matches!(funct7, 0b000_0000 | 0b010_0000) {
+                    Ok(Extensions::BaseI)
+                } else {
+                    Err(DecodingError::UnknownExtension)
+                }
+            }
             0b111_0011 => match funct3 {
                 0b000 => match funct7 {
                     0b000_0000 => Ok(Extensions::BaseI),

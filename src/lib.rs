@@ -32,8 +32,8 @@ mod instruction;
 // re-export
 pub use crate::decode::{Decode, DecodingError};
 pub use crate::instruction::{
-    a_extension::AOpcode, base_i::BaseIOpcode, c_extension::COpcode, d_extension::DOpcode,
-    f_extension::FOpcode, m_extension::MOpcode, priv_extension::PrivOpcode,
+    a_extension::AOpcode, b_extension::BOpcode, base_i::BaseIOpcode, c_extension::COpcode,
+    d_extension::DOpcode, f_extension::FOpcode, m_extension::MOpcode, priv_extension::PrivOpcode,
     zicboz_extension::ZicbozOpcode, zicfiss_extension::ZicfissOpcode,
     zicntr_extension::ZicntrOpcode, zicsr_extension::ZicsrOpcode,
     zifencei_extension::ZifenceiOpcode, InstFormat, Instruction, OpcodeKind,
@@ -55,6 +55,8 @@ enum Extensions {
     BaseI,
     /// Integer Multiplication and Division
     M,
+    /// Bit-manipulation (Zba/Zbb/Zbs) + Zicond — register-register subset
+    B,
     /// Atomic Instructions
     A,
     /// Compressed Instructions

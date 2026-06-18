@@ -1,6 +1,7 @@
 //! Define instructions data structure.
 
 pub mod a_extension;
+pub mod b_extension;
 pub mod base_i;
 pub mod c_extension;
 pub mod d_extension;
@@ -16,6 +17,7 @@ pub mod zifencei_extension;
 use core::fmt::{self, Display, Formatter};
 
 use a_extension::AOpcode;
+use b_extension::BOpcode;
 use base_i::BaseIOpcode;
 use c_extension::COpcode;
 use d_extension::DOpcode;
@@ -516,6 +518,8 @@ pub enum OpcodeKind {
     BaseI(BaseIOpcode),
     /// Integer Multiplication and Division
     M(MOpcode),
+    /// Bit-manipulation (Zba/Zbb/Zbs) + Zicond, register-register subset
+    B(BOpcode),
     /// Atomic Instructions
     A(AOpcode),
     /// Compressed Instructions
@@ -550,6 +554,7 @@ impl Display for OpcodeKind {
         match self {
             Self::BaseI(opc) => write!(f, "{opc}"),
             Self::M(opc) => write!(f, "{opc}"),
+            Self::B(opc) => write!(f, "{opc}"),
             Self::A(opc) => write!(f, "{opc}"),
             Self::C(opc) => write!(f, "{opc}"),
             Self::F(opc) => write!(f, "{opc}"),
@@ -570,6 +575,7 @@ impl OpcodeKind {
         match &self {
             Self::BaseI(opc) => opc.get_format(),
             Self::M(opc) => opc.get_format(),
+            Self::B(opc) => opc.get_format(),
             Self::A(opc) => opc.get_format(),
             Self::C(opc) => opc.get_format(),
             Self::F(opc) => opc.get_format(),

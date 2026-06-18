@@ -4,6 +4,7 @@ mod inst_16;
 mod inst_32;
 
 mod a_extension;
+mod b_extension;
 mod base_i;
 mod c_extension;
 mod d_extension;
