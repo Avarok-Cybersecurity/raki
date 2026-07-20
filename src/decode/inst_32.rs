@@ -224,6 +224,16 @@ impl DecodeUtil for u32 {
                     Err(DecodingError::UnknownExtension)
                 }
             }
+            // OP-IMM / OP-IMM-32: route the immediate-shift and unary
+            // Zbb/Zbs/Zba forms to B BEFORE base-I (base-I fails loud on
+            // their reserved funct6/funct7). Plain ADDI/SLLI/… fall through.
+            0b001_0011 | 0b001_1011 => {
+                if b_extension::bit_32::is_b_imm(self) {
+                    Ok(Extensions::B)
+                } else {
+                    Ok(Extensions::BaseI)
+                }
+            }
             0b111_0011 => match funct3 {
                 0b000 => match funct7 {
                     0b000_0000 => Ok(Extensions::BaseI),

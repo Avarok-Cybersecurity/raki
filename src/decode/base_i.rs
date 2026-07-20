@@ -564,12 +564,26 @@ mod test_soundness {
     #[test]
     #[allow(overflowing_literals)]
     fn unmodelled_bitmanip_still_fails_loud() {
-        // Immediate / unary B-extension forms NOT yet modelled must still
-        // fail loud (never silently mis-decode as a base-I op).
+        // The immediate / unary Zbb/Zbs/Zba forms are now MODELLED: they
+        // must decode (routed to the B extension), never mis-decode as
+        // base-I.
         for &(enc, name) in &[
             (0x0807169bu32, "slli.uw"),
             (0x60511093, "rori x1,x2,5"),
             (0x60201013, "clz x0,x0"),
+        ] {
+            assert!(
+                Decode::decode(&enc, Isa::Rv64).is_ok(),
+                "{name} (0x{enc:08x}) is modelled and must decode"
+            );
+        }
+        // RESERVED encodings must STILL fail loud — never silently
+        // mis-decode as a base-I op. (Zbc clmul is now modelled; these are
+        // a reserved OP funct3=000 in the clmul funct7 block, and a
+        // reserved unary sub-op.)
+        for &(enc, name) in &[
+            (0x0a3100b3u32, "reserved OP funct7=0x05,funct3=000"),
+            (0x60301013, "reserved unary sub-op (funct7=0x30,rs2=3)"),
         ] {
             assert!(
                 Decode::decode(&enc, Isa::Rv64).is_err(),
